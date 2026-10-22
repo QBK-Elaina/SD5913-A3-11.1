@@ -35,6 +35,15 @@ def headless_check() -> None:
     for tick in range(1, 121):
         pet.update(1 / 60, bounds, tick / 60)
     assert bounds.left + pet.radius <= pet.x <= bounds.right - pet.radius
+
+    # Force each autonomous pose and exercise both its update and draw path.
+    for pose in (PetState.WANDER, PetState.REST, PetState.NAP, PetState.GROOM, PetState.LOOK_AROUND):
+        pet.state = pose
+        pet._action_elapsed = 0.25
+        pet._action_duration = 2.0
+        pet.draw(surface, 2.0)
+        pet.update(1 / 60, bounds, 2.0)
+
     pet.draw(surface, 2.0)
     font = pygame.font.SysFont("segoeui,arial", 17, bold=True)
     small = pygame.font.SysFont("segoeui,arial", 14)
@@ -135,7 +144,7 @@ def draw_status(
     pygame.draw.line(surface, (229, 218, 215), (0, 37), (WIDTH, 37), 1)
     title = font.render("Cozy Study Desk", True, INK)
     surface.blit(title, (18, 9))
-    state_color = (121, 102, 157) if pet.state == PetState.IDLE else (180, 121, 93)
+    state_color = (121, 102, 157) if pet.state in (PetState.IDLE, PetState.NAP, PetState.REST) else (180, 121, 93)
     state = small.render(f"{pet.state_name}  ·  {pet.mood}", True, state_color)
     surface.blit(state, (WIDTH - state.get_width() - 18, 11))
     instructions = small.render("Drag & throw pet  |  Press R to Reset", True, INK)
