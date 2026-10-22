@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import os
 
 import pygame
@@ -34,6 +35,10 @@ def headless_check() -> None:
         pet.update(1 / 60, bounds, tick / 60)
     assert bounds.left + pet.radius <= pet.x <= bounds.right - pet.radius
     pet.draw(surface, 2.0)
+    font = pygame.font.SysFont("segoeui,arial", 17, bold=True)
+    small = pygame.font.SysFont("segoeui,arial", 14)
+    draw_status(surface, font, small, pet, datetime(2026, 1, 2, 3, 4, 5).astimezone())
+    assert small.render("03:04:05", True, INK).get_width() > 0, "Clock text should render"
     pet.reset(280, 430)
     assert pet.state is PetState.IDLE
     pygame.quit()
@@ -59,12 +64,23 @@ def draw_desk(surface: pygame.Surface) -> None:
     pygame.draw.line(surface, (218, 174, 139), (0, 442), (WIDTH, 442), 2)
 
 
-def draw_status(surface: pygame.Surface, font: pygame.font.Font, small: pygame.font.Font, pet: DeskPet) -> None:
-    """Render a clean status bar and the required short instructions."""
+def draw_status(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    small: pygame.font.Font,
+    pet: DeskPet,
+    current_time: datetime | None = None,
+) -> None:
+    """Render status, current local computer time, and the short instructions."""
+    if current_time is None:
+        current_time = datetime.now().astimezone()
+
     pygame.draw.rect(surface, (255, 251, 247), (0, 0, WIDTH, 38))
     pygame.draw.line(surface, (229, 218, 215), (0, 37), (WIDTH, 37), 1)
     title = font.render("Cozy Study Desk", True, INK)
     surface.blit(title, (18, 9))
+    time_label = small.render(current_time.strftime("%H:%M:%S"), True, INK)
+    surface.blit(time_label, time_label.get_rect(center=(WIDTH // 2, 19)))
     state_color = (121, 102, 157) if pet.state == PetState.IDLE else (180, 121, 93)
     state = small.render(f"{pet.state_name}  ·  {pet.mood}", True, state_color)
     surface.blit(state, (WIDTH - state.get_width() - 18, 11))
@@ -119,7 +135,7 @@ def run() -> None:
 
         draw_desk(screen)
         pet.draw(screen, now)
-        draw_status(screen, font, small, pet)
+        draw_status(screen, font, small, pet, datetime.now().astimezone())
         pygame.display.flip()
 
     pygame.quit()
