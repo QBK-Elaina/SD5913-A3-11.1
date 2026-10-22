@@ -39,6 +39,7 @@ class PetState(Enum):
     NAP = auto()
     GROOM = auto()
     LOOK_AROUND = auto()
+    CHEER = auto()
     DRAGGED = auto()
     FALLING = auto()
 
@@ -51,6 +52,8 @@ class DeskPet:
     MAX_THROW_SPEED = 1500.0
     WALK_SPEED = 54.0
     WANDER_INTERVAL = (1.5, 4.0)
+    TAP_COOLDOWN = 1.25
+    CHEER_DURATION = 0.95
 
     def __init__(
         self,
@@ -76,6 +79,11 @@ class DeskPet:
         self._behavior_timer = self._rng.uniform(1.0, 2.5)
         self._action_duration = 0.0
         self._action_elapsed = 0.0
+        self._cheer_timer = 0.0
+        self._cheer_was_falling = False
+        self._tap_cooldown = 0.0
+        self.feedback = ""
+        self.feedback_timer = 0.0
         self._rest_side = 1
         self._facing = 1
         self._drag_offset = (0.0, 0.0)
@@ -97,10 +105,39 @@ class DeskPet:
         self._behavior_timer = self._rng.uniform(1.0, 2.5)
         self._action_duration = 0.0
         self._action_elapsed = 0.0
+        self._cheer_timer = 0.0
+        self._cheer_was_falling = False
+        self._tap_cooldown = 0.0
+        self.feedback = ""
+        self.feedback_timer = 0.0
+
+    def hit_test(self, mouse_x: float, mouse_y: float) -> bool:
+        """Return whether a pointer position is inside the forgiving pet hit area."""
+        return math.hypot(mouse_x - self.x, mouse_y - self.y) <= self.radius * 1.5
+
+    def tap(self) -> bool:
+        """Cheer on a deliberate tap, or explain the brief repeat-tap cooldown."""
+        if self._tap_cooldown > 0:
+            if not self.feedback.startswith("Wait"):
+                self.feedback = "Wait a moment — let me enjoy that!"
+                self.feedback_timer = 1.25
+            return False
+
+        self._cheer_was_falling = self.state == PetState.FALLING
+        if not self._cheer_was_falling:
+            self.vx = self.vy = 0.0
+        self.state = PetState.CHEER
+        self.mood = "happy"
+        self._action_elapsed = 0.0
+        self._cheer_timer = self.CHEER_DURATION
+        self._tap_cooldown = self.TAP_COOLDOWN
+        self.feedback = "Aww, that feels nice!"
+        self.feedback_timer = 1.8
+        return True
 
     def begin_drag(self, mouse_x: float, mouse_y: float, now: float) -> bool:
-        """Pick the pet up if the mouse is inside its circular hit area."""
-        if math.hypot(mouse_x - self.x, mouse_y - self.y) > self.radius * 1.25:
+        """Pick the pet up if the mouse is inside its forgiving hit area."""
+        if not self.hit_test(mouse_x, mouse_y):
             return False
         self.state = PetState.DRAGGED
         self.mood = "curious"
@@ -148,6 +185,10 @@ class DeskPet:
         else:
             self._time = now
         floor = float(self.floor_y if self.floor_y is not None else bounds.bottom - 44)
+        self._tap_cooldown = max(0.0, self._tap_cooldown - dt)
+        self.feedback_timer = max(0.0, self.feedback_timer - dt)
+        if self.feedback_timer == 0.0:
+            self.feedback = ""
 
         self._blink_timer -= dt
         if self._blink_timer <= 0 and self._blink_remaining <= 0:
@@ -159,7 +200,31 @@ class DeskPet:
             self._keep_in_bounds(bounds)
             return
 
-        if self.state == PetState.IDLE:
+        if self.state == PetState.CHEER:
+            self._cheer_timer = max(0.0, self._cheer_timer - dt)
+            self._action_elapsed += dt
+            if self._cheer_was_falling:
+                self.vy += self.GRAVITY * dt
+                self.x += self.vx * dt
+                self.y += self.vy * dt
+                if self.y + self.radius >= floor:
+                    self.y = floor - self.radius
+                    if abs(self.vy) > 65:
+                        self.vy = -self.vy * self.FLOOR_BOUNCE
+                    else:
+                        self.vy = 0.0
+                        self._cheer_was_falling = False
+                        self.vx = 0.0
+            if self._cheer_timer == 0.0:
+                if self._cheer_was_falling:
+                    self.state = PetState.FALLING
+                    self.mood = "content"
+                else:
+                    self.state = PetState.IDLE
+                    self.mood = "content"
+                    self._behavior_timer = self._rng.uniform(0.8, 1.8)
+
+        elif self.state == PetState.IDLE:
             self.vx = self.vy = 0.0
             self._behavior_timer -= dt
             if self._behavior_timer <= 0:
@@ -271,6 +336,8 @@ class DeskPet:
         lean = 0.0
         if self.state == PetState.IDLE:
             bob = math.sin(now * 2.3) * 2.0
+        elif self.state == PetState.CHEER:
+            bob = -abs(math.sin(self._action_elapsed * math.pi * 2.0)) * 6.0
         elif self.state == PetState.WANDER:
             bob = abs(math.sin(now * 10.0)) * 3.2
         elif self.state == PetState.DRAGGED:
@@ -440,6 +507,20 @@ class DeskPet:
         if lean:
             sprite = pygame.transform.rotozoom(sprite, math.degrees(-lean), 1.0)
         surface.blit(sprite, sprite.get_rect(center=(round(cx), round(cy))))
+
+        # Tiny hearts float above the bow as a clear response to a gentle tap.
+        if self.state == PetState.CHEER:
+            progress = min(1.0, self._action_elapsed / self.CHEER_DURATION)
+            for index in range(2):
+                drift = (progress + index * 0.38) % 1.0
+                hx = int(cx + r * (0.48 + index * 0.35))
+                hy = int(cy - r * (1.28 + drift * 0.28))
+                size = max(6, int(r * 0.15))
+                color = (235, 112, 137)
+                pygame.draw.circle(surface, color, (hx - size // 4, hy), size // 4)
+                pygame.draw.circle(surface, color, (hx + size // 4, hy), size // 4)
+                pygame.draw.polygon(surface, color,
+                                    [(hx - size // 2, hy), (hx + size // 2, hy), (hx, hy + size // 2)])
 
         # Sleepy Zs drift upward while napping.
         if self.state == PetState.NAP:

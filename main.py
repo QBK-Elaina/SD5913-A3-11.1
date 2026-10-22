@@ -45,6 +45,22 @@ def headless_check() -> None:
         pet.update(1 / 60, bounds, 2.0)
 
     pet.draw(surface, 2.0)
+
+    pet.reset(280, 430)
+    assert pet.hit_test(280, 430 - pet.radius)
+    assert not pet.hit_test(600, 100)
+    assert pet.tap(), "A first tap should start the cheer response"
+    assert pet.state is PetState.CHEER and pet.mood == "happy"
+    pet.draw(surface, 2.0)
+    assert not pet.tap(), "A repeated tap during cooldown should be declined"
+    assert pet.feedback.startswith("Wait"), "Cooldown should explain why the repeated tap was ignored"
+    for _ in range(20):
+        pet.update(0.05, bounds)
+    assert pet.state is PetState.IDLE, "Cheer should return to idle after its short animation"
+    for _ in range(6):
+        pet.update(0.05, bounds)
+    assert pet.tap(), "Tapping should work again after the cooldown"
+
     font = pygame.font.SysFont("segoeui,arial", 17, bold=True)
     small = pygame.font.SysFont("segoeui,arial", 14)
     test_time = datetime(2026, 1, 2, 3, 4, 5).astimezone()
@@ -140,17 +156,24 @@ def draw_status(
     if current_time is None:
         current_time = datetime.now().astimezone()
 
-    pygame.draw.rect(surface, (255, 251, 247), (0, 0, WIDTH, 38))
-    pygame.draw.line(surface, (229, 218, 215), (0, 37), (WIDTH, 37), 1)
+    width, height = surface.get_size()
+    pygame.draw.rect(surface, (255, 251, 247), (0, 0, width, 38))
+    pygame.draw.line(surface, (229, 218, 215), (0, 37), (width, 37), 1)
     title = font.render("Cozy Study Desk", True, INK)
     surface.blit(title, (18, 9))
     state_color = (121, 102, 157) if pet.state in (PetState.IDLE, PetState.NAP, PetState.REST) else (180, 121, 93)
     state = small.render(f"{pet.state_name}  ·  {pet.mood}", True, state_color)
-    surface.blit(state, (WIDTH - state.get_width() - 18, 11))
-    instructions = small.render("Drag & throw pet  |  Press R to Reset", True, INK)
-    surface.blit(instructions, (18, HEIGHT - 28))
+    surface.blit(state, (width - state.get_width() - 18, 11))
+    instructions = small.render("Click pet to cheer  |  Drag & throw  |  R to reset", True, INK)
+    surface.blit(instructions, (18, height - 28))
     energy_label = small.render(f"energy {int(pet.energy * 100):02d}%", True, MUTED)
-    surface.blit(energy_label, (WIDTH - energy_label.get_width() - 18, HEIGHT - 28))
+    surface.blit(energy_label, (width - energy_label.get_width() - 18, height - 28))
+    if pet.feedback:
+        toast = small.render(pet.feedback, True, (116, 76, 94))
+        toast_box = toast.get_rect(center=(width // 2, 57)).inflate(24, 14)
+        pygame.draw.rect(surface, (255, 250, 247), toast_box, border_radius=10)
+        pygame.draw.rect(surface, (235, 206, 205), toast_box, width=1, border_radius=10)
+        surface.blit(toast, toast.get_rect(center=toast_box.center))
 
 
 def run() -> None:
@@ -164,6 +187,9 @@ def run() -> None:
     width, height = screen.get_size()
     floor_y = height - 96
     pet = DeskPet(width * 0.5, floor_y - 38, floor_y=floor_y)
+    pointer_down_at: tuple[int, int] | None = None
+    pointer_down_time = 0.0
+    drag_started = False
     running = True
 
     while running:
@@ -183,15 +209,31 @@ def run() -> None:
                 elif event.key == pygame.K_r:
                     pet.reset(width * 0.5, floor_y)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                pet.begin_drag(event.pos[0], event.pos[1], now)
-            elif event.type == pygame.MOUSEMOTION and pet.state == PetState.DRAGGED:
-                pet.drag_to(event.pos[0], event.pos[1], now)
+                pointer_down_at = event.pos
+                pointer_down_time = now
+                drag_started = False
+            elif event.type == pygame.MOUSEMOTION and pointer_down_at is not None:
+                dx = event.pos[0] - pointer_down_at[0]
+                dy = event.pos[1] - pointer_down_at[1]
+                if not drag_started and dx * dx + dy * dy >= 64 and pet.hit_test(*pointer_down_at):
+                    drag_started = pet.begin_drag(*pointer_down_at, pointer_down_time)
+                if drag_started:
+                    pet.drag_to(event.pos[0], event.pos[1], now)
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                pet.release_drag(now)
+                if drag_started:
+                    pet.release_drag(now)
+                elif (
+                    pointer_down_at is not None
+                    and pet.hit_test(*pointer_down_at)
+                    and pet.hit_test(*event.pos)
+                ):
+                    pet.tap()
+                pointer_down_at = None
+                drag_started = False
             elif event.type == pygame.VIDEORESIZE:
                 screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
 
-        if pet.state == PetState.DRAGGED:
+        if drag_started and pet.state == PetState.DRAGGED:
             mouse_x, mouse_y = pygame.mouse.get_pos()
             pet.drag_to(mouse_x, mouse_y, now)
         pet.update(dt, bounds, now)
