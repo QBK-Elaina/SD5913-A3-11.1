@@ -1,0 +1,16 @@
+[project]
+name = "cozy-desk-companion"
+version = "0.1.0"
+description = "A small, interactive Pygame desktop pet prototype for SD5913 Assignment 3."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pygame-ce>=2.5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
