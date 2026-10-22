@@ -206,7 +206,7 @@ def run() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="A tiny witch-hat companion for a cozy study desk.")
+    parser = argparse.ArgumentParser(description="A tiny cat-eared companion for a cozy study desk.")
     parser.add_argument("--headless-check", action="store_true", help="run a smoke test without opening a window")
     args = parser.parse_args()
     if args.headless_check:

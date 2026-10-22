@@ -13,6 +13,22 @@ from typing import Optional
 
 import pygame
 
+# Soft pastel palette for the procedural character.
+HAIR = (247, 204, 194)
+HAIR_LIGHT = (253, 229, 219)
+HAIR_SHADE = (229, 174, 168)
+SKIN = (255, 238, 227)
+SKIN_SHADE = (247, 213, 198)
+CREAM = (253, 249, 244)
+BOW = (214, 84, 96)
+BOW_LIGHT = (232, 118, 124)
+BOW_DARK = (176, 60, 76)
+GOLD = (245, 198, 105)
+EYE = (190, 112, 48)
+EYE_LIGHT = (246, 190, 100)
+EYE_DARK = (92, 52, 34)
+MOUTH = (188, 116, 116)
+
 
 class PetState(Enum):
     """The interaction/motion states used by :class:`DeskPet`."""
@@ -28,7 +44,7 @@ class PetState(Enum):
 
 
 class DeskPet:
-    """A procedural witch-hat pet with drag, throw, and soft-bounce physics."""
+    """A procedural cat-eared chibi companion with drag, throw, and soft-bounce physics."""
 
     GRAVITY = 980.0  # pixels per second squared, as in a simple Ball model
     FLOOR_BOUNCE = 0.28
@@ -250,84 +266,190 @@ class DeskPet:
                 self.vy = 0.0
 
     def draw(self, surface: pygame.Surface, now: float) -> None:
-        """Draw a fully procedural witch-hat sprite with simple animation."""
+        """Draw the cat-eared chibi companion, fully procedurally."""
         bob = 0.0
         lean = 0.0
         if self.state == PetState.IDLE:
-            bob = math.sin(now * 2.3) * 2.2
+            bob = math.sin(now * 2.3) * 2.0
         elif self.state == PetState.WANDER:
-            bob = abs(math.sin(now * 11.0)) * 3.0
+            bob = abs(math.sin(now * 10.0)) * 3.2
         elif self.state == PetState.DRAGGED:
             bob = math.sin(now * 8.0) * 2.0
         elif self.state == PetState.REST:
-            lean = self._rest_side * 0.20
-            bob = -3.0 + math.sin(now * 2.0) * 1.0
+            lean = self._rest_side * 0.12
+            bob = 3.0 + math.sin(now * 2.0) * 1.0
         elif self.state == PetState.NAP:
-            lean = self._facing * 0.34
-            bob = 3.0 + math.sin(now * 2.4) * 1.5
+            lean = self._facing * 0.14
+            bob = 5.0 + math.sin(now * 2.4) * 1.2
         elif self.state == PetState.GROOM:
-            bob = math.sin(self._action_elapsed * 13.0) * 1.2
+            bob = math.sin(self._action_elapsed * 13.0) * 1.0
 
-        cx, cy = int(self.x), int(self.y + bob)
-        r = int(self.radius)
-        shadow = pygame.Rect(cx - r + 7, cy + r - 8, r * 2 - 14, 9)
-        pygame.draw.ellipse(surface, (50, 43, 71, 70), shadow)
+        r = float(self.radius)
+        cx, cy = float(self.x), float(self.y + bob)
 
-        # Soft little body, cheeks, and feet; resting poses curl lower to the desk.
-        body_top = -0.08 if self.state not in (PetState.REST, PetState.NAP) else 0.04
-        body_height = 1.30 if self.state not in (PetState.REST, PetState.NAP) else 1.12
-        body = pygame.Rect(cx - r * 0.72, cy + int(r * body_top), int(r * 1.44), int(r * body_height))
-        pygame.draw.ellipse(surface, (250, 224, 196), body)
-        pygame.draw.ellipse(surface, (255, 241, 222), body.inflate(-7, -6))
-        pygame.draw.ellipse(surface, (239, 151, 151), (cx - r * 0.55, cy + 7, 10, 6))
-        pygame.draw.ellipse(surface, (239, 151, 151), (cx + r * 0.36, cy + 7, 10, 6))
-        foot_y = cy + (r - 3 if self.state not in (PetState.REST, PetState.NAP) else r - 5)
-        pygame.draw.ellipse(surface, (87, 68, 83), (cx - 13, foot_y, 12, 7))
-        pygame.draw.ellipse(surface, (87, 68, 83), (cx + 2, foot_y, 12, 7))
+        # Contact shadow stays on the desk while the character bobs above it.
+        shadow_w = max(10, int(r * 1.7))
+        shadow = pygame.Rect(int(cx - shadow_w / 2), int(cy + r - 5), shadow_w, max(6, int(r * 0.18)))
+        pygame.draw.ellipse(surface, (74, 58, 70), shadow)
 
-        # Tilt the hat by a few degrees while wandering and curl it for naps.
-        tilt = -math.sin(now * 2.8) * 0.08 if self.state == PetState.WANDER else lean
-        hat_points = [(-22, -7), (20, -7), (2, -r * 1.22)]
-        rotated = []
-        for px, py in hat_points:
-            rx = px * math.cos(tilt) - py * math.sin(tilt)
-            ry = px * math.sin(tilt) + py * math.cos(tilt)
-            rotated.append((cx + int(rx), cy + int(ry)))
-        pygame.draw.polygon(surface, (76, 62, 112), rotated)
-        pygame.draw.ellipse(surface, (63, 49, 98), (cx - r * 0.78, cy - 12, int(r * 1.56), 12))
-        pygame.draw.ellipse(surface, (244, 190, 107), (cx + 3, cy - 24, 8, 5))
+        sprite = pygame.Surface((int(r * 4), int(r * 4.4)), pygame.SRCALPHA)
+        ox, oy = r * 2, r * 2.2
 
-        # Face expression changes with mood. Blink frames are time-based.
-        eye_y = cy + 10
-        if self.state == PetState.LOOK_AROUND:
-            look_offset = self._facing * 3
-            pygame.draw.ellipse(surface, (52, 46, 66), (cx - 11 + look_offset, eye_y - 3, 5, 8))
-            pygame.draw.ellipse(surface, (52, 46, 66), (cx + 6 + look_offset, eye_y - 3, 5, 8))
-            pygame.draw.circle(surface, (255, 255, 255), (cx - 9 + look_offset, eye_y - 1), 1)
-            pygame.draw.circle(surface, (255, 255, 255), (cx + 8 + look_offset, eye_y - 1), 1)
-        elif self.state == PetState.NAP:
-            pygame.draw.arc(surface, (60, 49, 68), (cx - 13, eye_y, 8, 5), math.pi, math.tau, 2)
-            pygame.draw.arc(surface, (60, 49, 68), (cx + 5, eye_y, 8, 5), math.pi, math.tau, 2)
-            z_text = pygame.font.SysFont("segoeui,arial", 13, bold=True).render("z", True, (111, 94, 142))
-            surface.blit(z_text, (cx + r - 4, cy - r - int((self._action_elapsed * 10) % 8)))
-        elif self.state == PetState.GROOM:
-            # A tiny paw rises to the cheek for a repeated washing motion.
-            paw_y = eye_y + 4 + int(abs(math.sin(self._action_elapsed * 13.0)) * 5)
-            pygame.draw.ellipse(surface, (250, 224, 196), (cx + 12, paw_y, 9, 8))
-            pygame.draw.line(surface, (60, 49, 68), (cx - 11, eye_y + 1), (cx - 6, eye_y + 1), 2)
-            pygame.draw.ellipse(surface, (52, 46, 66), (cx + 6, eye_y - 3, 5, 7))
-        elif self.state == PetState.REST or self._blink_remaining > 0:
-            pygame.draw.line(surface, (60, 49, 68), (cx - 12, eye_y + 2), (cx - 6, eye_y + 2), 2)
-            pygame.draw.line(surface, (60, 49, 68), (cx + 6, eye_y + 2), (cx + 12, eye_y + 2), 2)
+        def rr(x: float, y: float, w: float, h: float) -> pygame.Rect:
+            return pygame.Rect(
+                round(ox + (x - w / 2) * r),
+                round(oy + (y - h / 2) * r),
+                max(1, round(w * r)),
+                max(1, round(h * r)),
+            )
+
+        def pp(x: float, y: float) -> tuple[int, int]:
+            return (round(ox + x * r), round(oy + y * r))
+
+        def star(cx_: float, cy_: float, outer: float, inner: float, color: tuple[int, int, int]) -> None:
+            points = []
+            for index in range(10):
+                angle = -math.pi / 2 + index * math.pi / 5
+                radius = outer if index % 2 == 0 else inner
+                points.append((round(ox + cx_ * r + radius * math.cos(angle)),
+                               round(oy + cy_ * r + radius * math.sin(angle))))
+            pygame.draw.polygon(sprite, color, points)
+
+        # Hair silhouette behind the body: peach-pink hime cut with twin locks.
+        pygame.draw.ellipse(sprite, HAIR_SHADE, rr(0, 0.10, 1.74, 1.82))
+        pygame.draw.ellipse(sprite, HAIR, rr(0, 0.07, 1.64, 1.74))
+
+        # White dress with red puff sleeves and a ribbon at the chest.
+        pygame.draw.polygon(sprite, CREAM, [pp(-0.50, 0.16), pp(0.50, 0.16), pp(0.70, 0.92), pp(-0.70, 0.92)])
+        pygame.draw.ellipse(sprite, CREAM, rr(0, 0.86, 1.40, 0.22))
+        pygame.draw.line(sprite, (238, 226, 221), pp(0, 0.34), pp(0, 0.88), 1)
+        for side in (-1, 1):
+            pygame.draw.ellipse(sprite, BOW, rr(side * 0.56, 0.44, 0.36, 0.62))
+            pygame.draw.ellipse(sprite, BOW_LIGHT, rr(side * 0.58, 0.34, 0.22, 0.20))
+            pygame.draw.ellipse(sprite, CREAM, rr(side * 0.55, 0.71, 0.24, 0.16))
+            pygame.draw.line(sprite, GOLD, pp(side * 0.48, 0.30), pp(side * 0.30, 0.48), 1)
+
+        # Collar and red neck ribbon.
+        pygame.draw.polygon(sprite, (255, 255, 255), [pp(-0.30, 0.14), pp(0.30, 0.14), pp(0.0, 0.34)])
+        pygame.draw.line(sprite, GOLD, pp(-0.30, 0.16), pp(0.0, 0.34), 1)
+        pygame.draw.line(sprite, GOLD, pp(0.30, 0.16), pp(0.0, 0.34), 1)
+        pygame.draw.polygon(sprite, BOW, [pp(-0.02, 0.44), pp(-0.24, 0.35), pp(-0.24, 0.50), pp(-0.02, 0.47)])
+        pygame.draw.polygon(sprite, BOW, [pp(0.02, 0.44), pp(0.24, 0.35), pp(0.24, 0.50), pp(0.02, 0.47)])
+        pygame.draw.circle(sprite, BOW_DARK, pp(0, 0.44), max(2, round(0.05 * r)))
+
+        # Long side locks fall in front of the shoulders.
+        for side in (-1, 1):
+            pygame.draw.polygon(sprite, HAIR, [
+                pp(side * 0.44, -0.44), pp(side * 0.82, -0.26),
+                pp(side * 0.76, 0.74), pp(side * 0.60, 0.94), pp(side * 0.50, 0.52),
+            ])
+            pygame.draw.ellipse(sprite, HAIR_LIGHT, rr(side * 0.70, 0.45, 0.10, 0.48))
+
+        # Round chibi face.
+        pygame.draw.ellipse(sprite, SKIN_SHADE, rr(0, -0.30, 1.10, 1.04))
+        pygame.draw.ellipse(sprite, SKIN, rr(0, -0.32, 1.02, 0.94))
+
+        # Face: big amber eyes, or closed eyes while resting.
+        closed = self.state in (PetState.REST, PetState.NAP) or self._blink_remaining > 0
+        gaze = self._facing * 0.035 if self.state == PetState.LOOK_AROUND else 0.0
+        for side in (-1, 1):
+            ex = side * 0.26
+            if self.state == PetState.GROOM and side == 1:
+                # Playful wink while grooming.
+                pygame.draw.lines(sprite, EYE_DARK, False,
+                                  [pp(ex - 0.11, -0.25), pp(ex, -0.20), pp(ex + 0.11, -0.25)], 3)
+                continue
+            if closed:
+                pygame.draw.lines(sprite, EYE_DARK, False,
+                                  [pp(ex - 0.11, -0.25), pp(ex, -0.21), pp(ex + 0.11, -0.25)], 3)
+                continue
+            eye = rr(ex, -0.24, 0.34, 0.38)
+            pygame.draw.ellipse(sprite, (146, 96, 84), eye)
+            inner = eye.inflate(-max(2, round(0.045 * r)), -max(2, round(0.045 * r)))
+            pygame.draw.ellipse(sprite, (255, 255, 255), inner)
+            iris = pygame.Rect(
+                inner.x + round(0.025 * r) + round(gaze * r),
+                inner.y + round(0.02 * r),
+                max(2, inner.w - round(0.05 * r)),
+                max(2, inner.h - round(0.05 * r)),
+            )
+            pygame.draw.ellipse(sprite, EYE_DARK, iris)
+            pygame.draw.ellipse(sprite, EYE, iris.inflate(-max(2, round(0.035 * r)), -max(2, round(0.035 * r))))
+            pupil = iris.inflate(-max(2, round(0.13 * r)), -max(2, round(0.17 * r)))
+            pygame.draw.ellipse(sprite, EYE_DARK, pupil)
+            pygame.draw.circle(sprite, (255, 255, 255),
+                               (iris.x + max(2, round(0.05 * r)), iris.y + max(2, round(0.06 * r))),
+                               max(2, round(0.065 * r)))
+            pygame.draw.circle(sprite, (255, 255, 255),
+                               (iris.right - max(1, round(0.05 * r)), iris.bottom - max(1, round(0.05 * r))),
+                               max(1, round(0.03 * r)))
+
+        # Blush and a small smile.
+        pygame.draw.ellipse(sprite, (250, 188, 184), rr(-0.40, -0.07, 0.19, 0.09))
+        pygame.draw.ellipse(sprite, (250, 188, 184), rr(0.40, -0.07, 0.19, 0.09))
+        if self.state == PetState.DRAGGED or self.mood == "surprised":
+            pygame.draw.ellipse(sprite, MOUTH, rr(0, 0.01, 0.07, 0.09))
         else:
-            pygame.draw.ellipse(surface, (52, 46, 66), (cx - 11, eye_y - 3, 5, 8))
-            pygame.draw.ellipse(surface, (52, 46, 66), (cx + 6, eye_y - 3, 5, 8))
-            pygame.draw.circle(surface, (255, 255, 255), (cx - 9, eye_y - 1), 1)
-            pygame.draw.circle(surface, (255, 255, 255), (cx + 8, eye_y - 1), 1)
-        if self.mood == "surprised":
-            pygame.draw.ellipse(surface, (112, 68, 83), (cx - 2, eye_y + 8, 5, 6))
-        else:
-            pygame.draw.arc(surface, (135, 78, 89), (cx - 4, eye_y + 5, 8, 7), math.pi, math.tau, 2)
+            pygame.draw.lines(sprite, MOUTH, False,
+                              [pp(-0.07, 0.01), pp(-0.035, 0.05), pp(0, 0.065), pp(0.035, 0.05), pp(0.07, 0.01)], 2)
+
+        # Soft parted fringe, drawn over the brow and the top of the eyes.
+        pygame.draw.ellipse(sprite, HAIR, rr(0, -0.70, 1.06, 0.54))
+        for x, y, w, h in (
+            (-0.38, -0.60, 0.46, 0.48),
+            (-0.12, -0.62, 0.42, 0.50),
+            (0.12, -0.62, 0.42, 0.50),
+            (0.38, -0.60, 0.46, 0.48),
+            (0.0, -0.56, 0.26, 0.40),
+        ):
+            pygame.draw.ellipse(sprite, HAIR, rr(x, y, w, h))
+
+        # Cat ears with pink inner fur, peeking above the bangs.
+        for side in (-1, 1):
+            outer_ear = [pp(side * 0.28, -0.78), pp(side * 0.60, -1.30), pp(side * 0.84, -0.68)]
+            inner_ear = [pp(side * 0.44, -0.82), pp(side * 0.61, -1.12), pp(side * 0.73, -0.75)]
+            pygame.draw.polygon(sprite, HAIR, outer_ear)
+            pygame.draw.polygon(sprite, (248, 187, 186), inner_ear)
+            pygame.draw.lines(sprite, HAIR_SHADE, True, outer_ear, 2)
+
+        # A soft tuft of hair fills the crown under the ribbon.
+        pygame.draw.ellipse(sprite, HAIR, rr(0, -0.86, 0.64, 0.40))
+        pygame.draw.ellipse(sprite, HAIR_LIGHT, rr(-0.10, -0.94, 0.20, 0.05))
+
+        # Curl of hair (ahoge) above the bow.
+        pygame.draw.lines(sprite, HAIR_SHADE, False,
+                          [pp(0.02, -0.92), pp(0.07, -1.10), pp(0.18, -1.18), pp(0.22, -1.10)], 2)
+
+        # Big red ribbon tied on top, with a gentle idle sway.
+        sway = math.sin(now * 1.7) * 0.02
+        pygame.draw.polygon(sprite, BOW, [pp(-0.04, -1.10), pp(-0.44 + sway, -1.26), pp(-0.52 + sway, -0.94), pp(-0.06, -0.99)])
+        pygame.draw.polygon(sprite, BOW, [pp(0.04, -1.10), pp(0.44 - sway, -1.26), pp(0.52 - sway, -0.94), pp(0.06, -0.99)])
+        pygame.draw.polygon(sprite, BOW_LIGHT, [pp(-0.10, -1.10), pp(-0.33 + sway, -1.18), pp(-0.35 + sway, -1.03), pp(-0.10, -1.05)])
+        pygame.draw.polygon(sprite, BOW_LIGHT, [pp(0.10, -1.10), pp(0.33 - sway, -1.18), pp(0.35 - sway, -1.03), pp(0.10, -1.05)])
+        pygame.draw.circle(sprite, BOW_DARK, pp(0, -1.08), max(2, round(0.09 * r)))
+
+        # Gold star hair clip.
+        star(-0.44, -0.52, 0.10 * r, 0.045 * r, GOLD)
+
+        # Raised paw for grooming, drawn over the cheek.
+        if self.state == PetState.GROOM:
+            paw_y = -0.10 + abs(math.sin(self._action_elapsed * 13.0)) * 0.07
+            pygame.draw.ellipse(sprite, SKIN, rr(0.36, paw_y, 0.24, 0.20))
+            pygame.draw.ellipse(sprite, SKIN_SHADE, rr(0.36, paw_y, 0.24, 0.20), 1)
+
+        if lean:
+            sprite = pygame.transform.rotozoom(sprite, math.degrees(-lean), 1.0)
+        surface.blit(sprite, sprite.get_rect(center=(round(cx), round(cy))))
+
+        # Sleepy Zs drift upward while napping.
+        if self.state == PetState.NAP:
+            for index in range(2):
+                t = (self._action_elapsed * 0.55 + index * 0.5) % 1.0
+                zx = int(cx + r * (0.55 + t * 0.30))
+                zy = int(cy - r * (0.60 + t * 0.55))
+                size = max(3, int(r * (0.10 + t * 0.05)))
+                pygame.draw.lines(surface, (150, 128, 170), False,
+                                  [(zx, zy), (zx + size, zy), (zx, zy + size), (zx + size, zy + size)], 2)
 
     @property
     def state_name(self) -> str:

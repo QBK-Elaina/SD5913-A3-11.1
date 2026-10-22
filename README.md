@@ -1,6 +1,6 @@
 # Cozy Desk Companion
 
-A self-contained Pygame desktop-pet prototype for PolyU SD5913 Assignment 3, managed with [uv](https://docs.astral.sh/uv/). The scene is a cozy study desk with a procedural witch-hat companion and a live analog wall clock.
+A self-contained Pygame desktop-pet prototype for PolyU SD5913 Assignment 3, managed with [uv](https://docs.astral.sh/uv/). The scene is a cozy study desk with a procedural cat-eared chibi companion and a live analog wall clock.
 
 ## Features
 
