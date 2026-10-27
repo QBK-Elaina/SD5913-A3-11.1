@@ -8,7 +8,7 @@ The project began as a small, self-contained desktop pet for a cozy study desk. 
 
 The initial prototype used a procedural witch-hat character. It was later redesigned as a pink-haired, cat-eared chibi character inspired by the visual reference supplied during development. The new sprite is drawn with Pygame shapes rather than a copied image, so the project does not depend on external art files. The autonomous state machine was also extended with walking, resting, napping, grooming and looking-around poses.
 
-The latest interaction iteration adds a deliberate click-to-cheer response alongside drag-and-throw. A click makes the character bounce, show floating hearts, become happy, and display a short message. A brief cooldown makes rapid repeat clicks harmless and explains why another cheer did not trigger. This is intended to make the input-response-feedback loop clearer without adding a service or external dependency.
+The click-to-cheer response sits alongside drag-and-throw: a click makes the character bounce, show floating hearts, become happy, and display a short message. A brief cooldown makes rapid repeat clicks harmless and explains why another cheer did not trigger. The room was then extended with a procedural chair and bed; the autonomous state machine can route the pet to sit or nap there and return to its floor position. Furniture destinations follow the resizable scene layout, and a bed visit restores energy. These additions make the room feel more lived-in while keeping the experience self-contained and testable without external services or art assets.
 
 ## User trial and iteration
 
@@ -16,7 +16,7 @@ The latest interaction iteration adds a deliberate click-to-cheer response along
 
 ## AI tools and decisions
 
-An AI coding assistant was used to help plan and implement the prototype, autonomous behaviors, procedural character drawing, README updates, and the click-to-cheer interaction. One suggestion kept was to make the user action produce an explicit response and visible feedback; this led to the happy bounce, floating hearts, message, and energy change. A suggestion to add more actions was narrowed rather than expanded: the focus here is a single clear click interaction, with a cooldown for repeated taps. The implementation was checked with the project's uv-managed headless smoke test and Python compilation check.
+An AI coding assistant was used to help plan and implement the prototype, autonomous behaviors, procedural character drawing, README updates, the click-to-cheer interaction, and furniture visits. One suggestion kept was to make the user action produce an explicit response and visible feedback; this led to the happy bounce, floating hearts, message, and energy change. Furniture was added as a small extension of the autonomous state machine rather than as a new user control. The implementation is checked with the project's uv-managed headless smoke test and Python compilation check.
 
 ## Credits
 

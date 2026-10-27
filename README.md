@@ -5,6 +5,7 @@ A self-contained Pygame desktop-pet prototype for PolyU SD5913 Assignment 3, man
 ## Features
 
 - **Autonomous behavior:** when left alone, the pet cycles through idle, walking, resting, napping, grooming, and looking around. It chooses actions on its own, and low energy makes naps more likely; naps restore energy.
+- **Furniture visits:** the pet occasionally hops to the chair to sit or to the bed for a restorative nap, then returns to its floor spot. Low energy makes a bed visit more likely.
 - **Tap to cheer:** click the pet for a happy bounce, floating hearts, and a short message. A brief cooldown prevents rapid repeat taps from spamming the response; the pet explains when it is still cooling down.
 - **Interactive physics:** drag and throw the pet with the mouse. It follows the cursor while grabbed, inherits mouse velocity on release, falls under gravity, bounces softly on the desk, and stays inside the window.
 - **Procedural animation and art:** all scene and character shapes are drawn by Pygame, so no external image assets are needed. Expressions and poses vary by action.
@@ -47,4 +48,4 @@ Run the smoke test without opening the interactive window:
 uv run python main.py --headless-check
 ```
 
-The check exercises imports, drag-and-throw physics, bounds, autonomous pose drawing, the wall-clock/background rendering, and reset behavior.
+The check exercises imports, drag-and-throw physics, bounds, autonomous pose drawing, complete chair and bed visits (including return paths and bed energy recovery), wall-clock/background rendering, and reset behavior.

@@ -37,13 +37,65 @@ def headless_check() -> None:
     assert bounds.left + pet.radius <= pet.x <= bounds.right - pet.radius
 
     # Force each autonomous pose and exercise both its update and draw path.
-    for pose in (PetState.WANDER, PetState.REST, PetState.NAP, PetState.GROOM, PetState.LOOK_AROUND):
+    for pose in (
+        PetState.WANDER, PetState.REST, PetState.NAP, PetState.GROOM,
+        PetState.LOOK_AROUND, PetState.GO_TO_CHAIR, PetState.SIT_CHAIR,
+        PetState.GO_TO_BED, PetState.NAP_BED, PetState.RETURN_TO_FLOOR,
+    ):
+        pet.set_furniture_spots(576, 351, 228, 337)
+        if pose in (PetState.GO_TO_CHAIR, PetState.GO_TO_BED, PetState.RETURN_TO_FLOOR):
+            pet._trip_duration = 1.0
+            pet._trip_elapsed = 0.25
+            pet._trip_start_x, pet._trip_start_y = pet.x, pet.y
+            pet._trip_target_x, pet._trip_target_y = pet.x + 60, pet.y - 30
+        if pose == PetState.RETURN_TO_FLOOR:
+            pet._trip_arrival_state = PetState.IDLE
         pet.state = pose
         pet._action_elapsed = 0.25
         pet._action_duration = 2.0
+        pet._furniture_timer = 2.0
         pet.draw(surface, 2.0)
         pet.update(1 / 60, bounds, 2.0)
 
+    # Exercise a complete chair trip and return, including the seated dwell state.
+    pet.reset(280, 430)
+    pet.set_furniture_spots(576, 351, 228, 337)
+    pet._start_furniture_trip(576, pet.chair_y, arrival_state=PetState.SIT_CHAIR)
+    for _ in range(120):
+        pet.update(0.05, bounds)
+        if pet.state is PetState.SIT_CHAIR:
+            break
+    assert pet.state is PetState.SIT_CHAIR, "Chair trip should land in the seated state"
+    pet._furniture_timer = 0.01
+    pet.update(0.05, bounds)
+    assert pet.state is PetState.RETURN_TO_FLOOR, "Chair visit should initiate a return trip"
+    for _ in range(120):
+        pet.update(0.05, bounds)
+        if pet.state is PetState.IDLE:
+            break
+    assert pet.state is PetState.IDLE, "Chair visit should return to floor idle"
+
+    # Bed nap should restore energy before returning to the floor.
+    pet.energy = 0.2
+    pet._start_furniture_trip(228, pet.bed_y, arrival_state=PetState.NAP_BED)
+    for _ in range(120):
+        pet.update(0.05, bounds)
+        if pet.state is PetState.NAP_BED:
+            break
+    assert pet.state is PetState.NAP_BED, "Bed trip should land in the nap state"
+    starting_energy = pet.energy
+    pet.update(0.5, bounds)
+    assert pet.energy > starting_energy, "Bed naps should restore energy"
+    pet._furniture_timer = 0.01
+    pet.update(0.05, bounds)
+    for _ in range(120):
+        pet.update(0.05, bounds)
+        if pet.state is PetState.IDLE:
+            break
+    assert pet.state is PetState.IDLE, "Bed visit should return to floor idle"
+
+    # Continue with tap/cooldown checks from a clean floor state.
+    pet.reset(280, 430)
     pet.draw(surface, 2.0)
 
     pet.reset(280, 430)
@@ -143,6 +195,61 @@ def draw_desk(surface: pygame.Surface, current_time: datetime | None = None) -> 
     pygame.draw.rect(surface, DESK, (0, desk_top, width, height - desk_top))
     pygame.draw.rect(surface, DESK_EDGE, (0, desk_top, width, 9))
     pygame.draw.line(surface, (218, 174, 139), (0, desk_top + 18), (width, desk_top + 18), 2)
+    draw_furniture(surface, desk_top)
+
+
+def draw_furniture(surface: pygame.Surface, desk_top: int) -> None:
+    """Draw a small bed and a study chair with clear surfaces for pet visits."""
+    width, height = surface.get_size()
+    sx, sy = width / 800, height / 520
+
+    # Bed at the back-left: headboard, mattress, blanket, pillow and short legs.
+    bed_cx = int(width * 0.285)
+    bed_top = int(height * 0.635)
+    bed_surface_y = bed_top + int(7 * sy)
+    bed_left = bed_cx - int(91 * sx)
+    bed_width = int(182 * sx)
+    pygame.draw.rect(surface, (143, 100, 91),
+                     (bed_left, bed_top - int(63 * sy), bed_width, int(79 * sy)), border_radius=12)
+    pygame.draw.rect(surface, (205, 161, 139),
+                     (bed_left + int(10 * sx), bed_top - int(54 * sy), bed_width - int(20 * sx), int(46 * sy)), border_radius=8)
+    pygame.draw.rect(surface, (248, 229, 219),
+                     (bed_left - int(4 * sx), bed_top, bed_width + int(8 * sx), int(33 * sy)), border_radius=11)
+    pygame.draw.rect(surface, (227, 167, 174),
+                     (bed_left + int(48 * sx), bed_top + int(4 * sy), bed_width - int(53 * sx), int(25 * sy)), border_radius=8)
+    pygame.draw.rect(surface, (255, 248, 237),
+                     (bed_left + int(10 * sx), bed_top + int(4 * sy), int(53 * sx), int(22 * sy)), border_radius=7)
+    for leg_x in (bed_left + int(13 * sx), bed_left + bed_width - int(21 * sx)):
+        pygame.draw.rect(surface, (123, 82, 75),
+                         (leg_x, bed_top + int(30 * sy), int(9 * sx), max(2, desk_top - bed_top - int(30 * sy))))
+
+    # Study chair on the right, with a rounded back and cushioned seat.
+    chair_cx = int(width * 0.72)
+    seat_top = int(height * 0.675)
+    pygame.draw.rect(surface, (116, 92, 112),
+                     (chair_cx - int(39 * sx), seat_top - int(106 * sy), int(78 * sx), int(86 * sy)), border_radius=17)
+    pygame.draw.rect(surface, (159, 127, 149),
+                     (chair_cx - int(31 * sx), seat_top - int(97 * sy), int(62 * sx), int(70 * sy)), border_radius=13)
+    pygame.draw.rect(surface, (194, 145, 164),
+                     (chair_cx - int(48 * sx), seat_top - int(19 * sy), int(96 * sx), int(24 * sy)), border_radius=9)
+    pygame.draw.rect(surface, (155, 116, 140),
+                     (chair_cx - int(42 * sx), seat_top - int(16 * sy), int(84 * sx), int(15 * sy)), border_radius=7)
+    for leg_x in (chair_cx - int(35 * sx), chair_cx + int(27 * sx)):
+        pygame.draw.line(surface, (102, 78, 99),
+                         (leg_x, seat_top + int(5 * sy)), (leg_x - int(8 * sx), desk_top), max(3, int(5 * sx)))
+    pygame.draw.line(surface, (102, 78, 99),
+                     (chair_cx - int(34 * sx), seat_top + int(15 * sy)),
+                     (chair_cx + int(34 * sx), seat_top + int(15 * sy)), max(2, int(3 * sx)))
+
+
+def furniture_spots(width: int, height: int) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Return the chair-seat and bed-mattress centers/surface heights."""
+    sx, sy = width / 800, height / 520
+    chair_x = width * 0.72
+    chair_surface_y = height * 0.675 - int(16 * sy)
+    bed_x = width * 0.285
+    bed_surface_y = height * 0.635 + int(8 * sy)
+    return (chair_x, chair_surface_y), (bed_x, bed_surface_y)
 
 
 def draw_status(
@@ -161,8 +268,16 @@ def draw_status(
     pygame.draw.line(surface, (229, 218, 215), (0, 37), (width, 37), 1)
     title = font.render("Cozy Study Desk", True, INK)
     surface.blit(title, (18, 9))
-    state_color = (121, 102, 157) if pet.state in (PetState.IDLE, PetState.NAP, PetState.REST) else (180, 121, 93)
-    state = small.render(f"{pet.state_name}  ·  {pet.mood}", True, state_color)
+    state_labels = {
+        PetState.GO_TO_CHAIR: "Visiting the chair",
+        PetState.SIT_CHAIR: "Relaxing on the chair",
+        PetState.GO_TO_BED: "Heading to bed",
+        PetState.NAP_BED: "Napping on the bed",
+        PetState.RETURN_TO_FLOOR: "Hopping back",
+    }
+    state_label = state_labels.get(pet.state, pet.state_name)
+    state_color = (121, 102, 157) if pet.state in (PetState.IDLE, PetState.NAP, PetState.REST, PetState.NAP_BED) else (180, 121, 93)
+    state = small.render(f"{state_label}  ·  {pet.mood}", True, state_color)
     surface.blit(state, (width - state.get_width() - 18, 11))
     instructions = small.render("Click pet to cheer  |  Drag & throw  |  R to reset", True, INK)
     surface.blit(instructions, (18, height - 28))
@@ -199,6 +314,8 @@ def run() -> None:
         floor_y = height - 96
         bounds = pygame.Rect(0, 0, width, height)
         pet.floor_y = floor_y
+        (chair_x, chair_surface_y), (bed_x, bed_surface_y) = furniture_spots(width, height)
+        pet.set_furniture_spots(chair_x, chair_surface_y, bed_x, bed_surface_y)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:

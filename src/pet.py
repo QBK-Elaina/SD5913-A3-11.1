@@ -39,6 +39,11 @@ class PetState(Enum):
     NAP = auto()
     GROOM = auto()
     LOOK_AROUND = auto()
+    GO_TO_CHAIR = auto()
+    SIT_CHAIR = auto()
+    GO_TO_BED = auto()
+    NAP_BED = auto()
+    RETURN_TO_FLOOR = auto()
     CHEER = auto()
     DRAGGED = auto()
     FALLING = auto()
@@ -73,8 +78,28 @@ class DeskPet:
         self.mood = "content"
         self.energy = 1.0
         self.floor_y = floor_y
+        self._return_x = self.x
+        self._return_y = self.y
+        self._furniture_kind = ""
+        self._trip_start_x = self.x
+        self._trip_start_y = self.y
+        self._trip_target_x = self.x
+        self._trip_target_y = self.y
+        self._trip_elapsed = 0.0
+        self._trip_duration = 0.0
+        self._trip_arrival_state = PetState.IDLE
+        self._furniture_timer = 0.0
+        self._cheer_return_state = PetState.IDLE
+        self._cheer_return_mood = "content"
+        self.chair_x = self.x
+        self.chair_y = self.y
+        self.bed_x = self.x
+        self.bed_y = self.y
+        self._furniture_ready = False
+        self._furniture_pause = 8.0
 
         self._rng = random.Random(seed)
+        self._furniture_pause = self._rng.uniform(7.0, 13.0)
         self._wander_timer = 0.0
         self._behavior_timer = self._rng.uniform(1.0, 2.5)
         self._action_duration = 0.0
@@ -97,6 +122,19 @@ class DeskPet:
         self.x = float(x)
         self.floor_y = float(floor_y)
         self.y = self.floor_y - self.radius
+        self._return_x = self.x
+        self._return_y = self.y
+        self._furniture_kind = ""
+        self._furniture_pause = self._rng.uniform(7.0, 13.0)
+        self._trip_start_x = self.x
+        self._trip_start_y = self.y
+        self._trip_target_x = self.x
+        self._trip_target_y = self.y
+        self._trip_elapsed = 0.0
+        self._trip_duration = 0.0
+        self._trip_arrival_state = PetState.IDLE
+        self._furniture_timer = 0.0
+        self._cheer_return_state = PetState.IDLE
         self.vx = self.vy = 0.0
         self.state = PetState.IDLE
         self.mood = "content"
@@ -111,6 +149,21 @@ class DeskPet:
         self.feedback = ""
         self.feedback_timer = 0.0
 
+    def set_furniture_spots(
+        self,
+        chair_x: float,
+        chair_surface_y: float,
+        bed_x: float,
+        bed_surface_y: float,
+    ) -> None:
+        """Set furniture top-surface positions in the current window layout."""
+        self.chair_x = float(chair_x)
+        self.chair_y = float(chair_surface_y) - self.radius
+        self.bed_x = float(bed_x)
+        # The bed pose lies sideways, so raise its center to keep the sprite on the mattress.
+        self.bed_y = float(bed_surface_y) - self.radius * 1.25
+        self._furniture_ready = True
+
     def hit_test(self, mouse_x: float, mouse_y: float) -> bool:
         """Return whether a pointer position is inside the forgiving pet hit area."""
         return math.hypot(mouse_x - self.x, mouse_y - self.y) <= self.radius * 1.5
@@ -124,8 +177,19 @@ class DeskPet:
             return False
 
         self._cheer_was_falling = self.state == PetState.FALLING
+        self._cheer_return_state = self.state
+        self._cheer_return_mood = self.mood
         if not self._cheer_was_falling:
             self.vx = self.vy = 0.0
+            if self.state not in (PetState.SIT_CHAIR, PetState.NAP_BED,
+                                  PetState.GO_TO_CHAIR, PetState.GO_TO_BED,
+                                  PetState.RETURN_TO_FLOOR):
+                self._cheer_return_state = PetState.IDLE
+        if self._cheer_return_state in (PetState.GO_TO_CHAIR, PetState.GO_TO_BED, PetState.RETURN_TO_FLOOR):
+            remaining = math.hypot(self._trip_target_x - self.x, self._trip_target_y - self.y)
+            self._trip_duration = max(0.35, remaining / (self.WALK_SPEED * 1.8))
+            self._trip_elapsed = 0.0
+            self._trip_start_x, self._trip_start_y = self.x, self.y
         self.state = PetState.CHEER
         self.mood = "happy"
         self._action_elapsed = 0.0
@@ -139,6 +203,11 @@ class DeskPet:
         """Pick the pet up if the mouse is inside its forgiving hit area."""
         if not self.hit_test(mouse_x, mouse_y):
             return False
+        self._cheer_return_state = PetState.IDLE
+        self._cheer_return_mood = "content"
+        self._furniture_kind = ""
+        self._trip_elapsed = 0.0
+        self._trip_duration = 0.0
         self.state = PetState.DRAGGED
         self.mood = "curious"
         self._action_elapsed = 0.0
@@ -185,6 +254,7 @@ class DeskPet:
         else:
             self._time = now
         floor = float(self.floor_y if self.floor_y is not None else bounds.bottom - 44)
+        self._furniture_pause = max(0.0, self._furniture_pause - dt)
         self._tap_cooldown = max(0.0, self._tap_cooldown - dt)
         self.feedback_timer = max(0.0, self.feedback_timer - dt)
         if self.feedback_timer == 0.0:
@@ -220,9 +290,26 @@ class DeskPet:
                     self.state = PetState.FALLING
                     self.mood = "content"
                 else:
-                    self.state = PetState.IDLE
-                    self.mood = "content"
-                    self._behavior_timer = self._rng.uniform(0.8, 1.8)
+                    self.state = self._cheer_return_state
+                    self.mood = self._cheer_return_mood
+                    if self.state in (PetState.GO_TO_CHAIR, PetState.GO_TO_BED, PetState.RETURN_TO_FLOOR):
+                        self._trip_start_x = self.x
+                        self._trip_start_y = self.y
+                        self._trip_elapsed = 0.0
+                    if self.state == PetState.IDLE:
+                        self._behavior_timer = self._rng.uniform(0.8, 1.8)
+
+        elif self.state in (PetState.GO_TO_CHAIR, PetState.GO_TO_BED, PetState.RETURN_TO_FLOOR):
+            self._update_furniture_trip(dt)
+
+        elif self.state in (PetState.SIT_CHAIR, PetState.NAP_BED):
+            self.vx = self.vy = 0.0
+            self._furniture_timer -= dt
+            self._action_elapsed += dt
+            if self.state == PetState.NAP_BED:
+                self.energy = min(1.0, self.energy + dt * 0.16)
+            if self._furniture_timer <= 0:
+                self._start_return_trip(floor)
 
         elif self.state == PetState.IDLE:
             self.vx = self.vy = 0.0
@@ -268,12 +355,18 @@ class DeskPet:
         self._keep_in_bounds(bounds)
 
     def _choose_autonomous_action(self) -> None:
-        """Pick a small autonomous activity, weighted by current energy."""
+        """Pick a floor activity or a furniture visit, weighted by energy."""
         choices = [PetState.WANDER, PetState.REST, PetState.GROOM, PetState.LOOK_AROUND]
-        weights = [45, 18, 18, 19]
+        weights = [40, 17, 16, 17]
         if self.energy < 0.42:
             choices.append(PetState.NAP)
-            weights = [16, 24, 12, 13, 35]
+            weights.append(28)
+            if self._furniture_ready and self._furniture_pause <= 0:
+                choices.append(PetState.GO_TO_BED)
+                weights.append(19)
+        elif self._furniture_ready and self._furniture_pause <= 0:
+            choices.extend((PetState.GO_TO_CHAIR, PetState.GO_TO_BED))
+            weights.extend((11, 7))
         action = self._rng.choices(choices, weights=weights, k=1)[0]
         self.state = action
         self._action_elapsed = 0.0
@@ -283,6 +376,20 @@ class DeskPet:
             self.vx = self._facing * self.WALK_SPEED
             self._action_duration = self._rng.uniform(1.4, 4.2)
             self.mood = "playful"
+        elif action in (PetState.GO_TO_CHAIR, PetState.GO_TO_BED):
+            if action == PetState.GO_TO_CHAIR:
+                destination = (self.chair_x, self.chair_y)
+                self._furniture_kind = "chair"
+                self._trip_arrival_state = PetState.SIT_CHAIR
+                self.mood = "curious"
+            else:
+                destination = (self.bed_x, self.bed_y)
+                self._furniture_kind = "bed"
+                self._trip_arrival_state = PetState.NAP_BED
+                self.mood = "sleepy"
+            self._return_x = self.x
+            self._return_y = float(self.floor_y if self.floor_y is not None else self.y + self.radius)
+            self._start_furniture_trip(*destination, arrival_state=self._trip_arrival_state)
         elif action == PetState.REST:
             self._rest_side = self._rng.choice((-1, 1))
             self._action_duration = self._rng.uniform(1.8, 3.5)
@@ -297,6 +404,50 @@ class DeskPet:
             self._facing = self._rng.choice((-1, 1))
             self._action_duration = self._rng.uniform(1.0, 2.0)
             self.mood = "curious"
+
+    def _start_furniture_trip(self, target_x: float, target_y: float, *, arrival_state: PetState) -> None:
+        """Start a smooth, hop-like route to a furniture surface."""
+        self._trip_start_x = self.x
+        self._trip_start_y = self.y
+        self._trip_target_x = float(target_x)
+        self._trip_target_y = float(target_y)
+        self._trip_elapsed = 0.0
+        self._trip_duration = max(0.7, abs(self._trip_target_x - self.x) / (self.WALK_SPEED * 1.8))
+        self._trip_arrival_state = arrival_state
+        self.state = PetState.GO_TO_CHAIR if arrival_state == PetState.SIT_CHAIR else PetState.GO_TO_BED
+        self._action_elapsed = 0.0
+        self.mood = "curious" if arrival_state == PetState.SIT_CHAIR else "sleepy"
+        self._furniture_pause = self._rng.uniform(10.0, 18.0)
+
+    def _start_return_trip(self, floor_y: float) -> None:
+        """Hop back to the remembered floor position after using furniture."""
+        self._start_furniture_trip(self._return_x, floor_y - self.radius, arrival_state=PetState.IDLE)
+        self.state = PetState.RETURN_TO_FLOOR
+        self._furniture_pause = self._rng.uniform(10.0, 18.0)
+
+    def _update_furniture_trip(self, dt: float) -> None:
+        """Advance the furniture route with a small arc and land at the target."""
+        self._trip_elapsed = min(self._trip_duration, self._trip_elapsed + dt)
+        progress = self._trip_elapsed / max(self._trip_duration, 0.001)
+        self.x = self._trip_start_x + (self._trip_target_x - self._trip_start_x) * progress
+        base_y = self._trip_start_y + (self._trip_target_y - self._trip_start_y) * progress
+        self.y = base_y - math.sin(progress * math.pi) * self.radius * 0.9
+        self._facing = 1 if self._trip_target_x >= self._trip_start_x else -1
+        if progress >= 1.0:
+            self.x = self._trip_target_x
+            self.y = self._trip_target_y
+            self.vx = self.vy = 0.0
+            self._action_elapsed = 0.0
+            if self._trip_arrival_state == PetState.IDLE:
+                self.state = PetState.IDLE
+                self.mood = "content"
+                self._behavior_timer = self._rng.uniform(0.8, 1.8)
+                self._furniture_kind = ""
+                self._furniture_pause = self._rng.uniform(10.0, 18.0)
+            else:
+                self.state = self._trip_arrival_state
+                self._furniture_timer = self._rng.uniform(3.0, 5.0)
+                self.mood = "relaxed" if self.state == PetState.SIT_CHAIR else "sleepy"
 
     def _finish_autonomous_action(self) -> None:
         """Return from a finished pose to a short calm idle interval."""
@@ -345,6 +496,13 @@ class DeskPet:
         elif self.state == PetState.REST:
             lean = self._rest_side * 0.12
             bob = 3.0 + math.sin(now * 2.0) * 1.0
+        elif self.state == PetState.SIT_CHAIR:
+            bob = math.sin(now * 2.0) * 1.2
+        elif self.state in (PetState.GO_TO_CHAIR, PetState.GO_TO_BED, PetState.RETURN_TO_FLOOR):
+            bob = -abs(math.sin(self._trip_elapsed / max(self._trip_duration, 0.01) * math.pi)) * 5.0
+        elif self.state == PetState.NAP_BED:
+            lean = self._facing * 0.68
+            bob = 2.0 + math.sin(now * 2.4) * 1.0
         elif self.state == PetState.NAP:
             lean = self._facing * 0.14
             bob = 5.0 + math.sin(now * 2.4) * 1.2
@@ -417,7 +575,7 @@ class DeskPet:
         pygame.draw.ellipse(sprite, SKIN, rr(0, -0.32, 1.02, 0.94))
 
         # Face: big amber eyes, or closed eyes while resting.
-        closed = self.state in (PetState.REST, PetState.NAP) or self._blink_remaining > 0
+        closed = self.state in (PetState.REST, PetState.NAP, PetState.NAP_BED) or self._blink_remaining > 0
         gaze = self._facing * 0.035 if self.state == PetState.LOOK_AROUND else 0.0
         for side in (-1, 1):
             ex = side * 0.26
@@ -523,7 +681,7 @@ class DeskPet:
                                     [(hx - size // 2, hy), (hx + size // 2, hy), (hx, hy + size // 2)])
 
         # Sleepy Zs drift upward while napping.
-        if self.state == PetState.NAP:
+        if self.state in (PetState.NAP, PetState.NAP_BED):
             for index in range(2):
                 t = (self._action_elapsed * 0.55 + index * 0.5) % 1.0
                 zx = int(cx + r * (0.55 + t * 0.30))
